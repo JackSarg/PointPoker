@@ -93,7 +93,7 @@ The in-app `/privacy` and `/terms` pages document current behaviour, including b
 
 Before making the service public:
 
-- Confirm Jack Sarg is the correct data-controller name and that `jacksarg.com` provides a working privacy contact route.
+- Confirm the displayed data-controller identity is sufficient and that the privacy notice provides a working private contact route.
 - Seven-day inactivity deletion is enforced by Durable Object alarms. Room activity renews the deadline, and connected rooms are not deleted while participants are active.
 - Review the Cloudflare account's data-processing, log-retention and international-transfer settings.
 - GitHub vulnerability alerts, automatic security updates, private vulnerability reporting, secret scanning and push protection are enabled for the public repository.

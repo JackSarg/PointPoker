@@ -4,7 +4,7 @@
 
 Please do not disclose a suspected vulnerability in a public issue.
 
-Once the GitHub repository is published, use its private vulnerability-reporting feature. If that is unavailable, contact Jack Sarg through https://jacksarg.com with a short description and a safe way to reproduce the issue. Do not include real room tokens, private ticket content, or other people's personal data.
+Use the repository's private vulnerability-reporting feature to contact Jack with a short description and a safe way to reproduce the issue. Do not disclose security or privacy information in a public issue, and do not include real room tokens, private ticket content, or other people's personal data.
 
 You should receive an acknowledgement within seven days. There is currently no paid bug-bounty programme.
 

@@ -15,7 +15,7 @@ function PrivacyPolicy() {
 
       <section>
         <h2>Who runs PointPoker</h2>
-        <p>PointPoker is operated by Jack Sarg. You can get in touch through <a href="https://jacksarg.com" target="_blank" rel="noopener noreferrer">jacksarg.com <ExternalLink size={13} /></a>.</p>
+        <p>PointPoker is operated by Jack. You can get in touch privately through <a href="https://www.linkedin.com/in/jacksarg/" target="_blank" rel="noopener noreferrer">LinkedIn <ExternalLink size={13} /></a>. Do not include private room tokens or confidential ticket content in your message.</p>
       </section>
 
       <section>
@@ -51,7 +51,7 @@ function PrivacyPolicy() {
 
       <section>
         <h2>Your rights</h2>
-        <p>Depending on the circumstances, UK data-protection law may give you rights to access, correct, erase, restrict or object to use of your personal information, and to complain to the Information Commissioner's Office. Contact Jack through jacksarg.com with the room code and enough information to locate the relevant record. Never send your private room token.</p>
+        <p>Depending on the circumstances, UK data-protection law may give you rights to access, correct, erase, restrict or object to use of your personal information, and to complain to the Information Commissioner's Office. Contact Jack by private LinkedIn message with the room code and enough information to locate the relevant record. Never send your private room token.</p>
       </section>
     </>
   )
@@ -79,7 +79,7 @@ function TermsOfUse() {
 
       <section>
         <h2>Availability and liability</h2>
-        <p>The service is provided free of charge and on an as-available basis, without a service-level guarantee. To the extent permitted by law, Jack Sarg is not liable for indirect loss, lost data, missed estimates or decisions made using the service. Nothing in these terms excludes liability that cannot legally be excluded.</p>
+        <p>The service is provided free of charge and on an as-available basis, without a service-level guarantee. To the extent permitted by law, Jack is not liable for indirect loss, lost data, missed estimates or decisions made using the service. Nothing in these terms excludes liability that cannot legally be excluded.</p>
       </section>
 
       <section>

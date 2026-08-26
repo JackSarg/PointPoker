@@ -101,10 +101,10 @@ export default function Landing({ onNavigate, theme, onThemeChange }) {
               <small>3 acceptance criteria</small>
             </div>
             <div className="demo-table">
-              <div className="demo-seat seat-a"><span>{'\u{1F98A}'}</span><i className="card-back">◆</i><small>Maya</small></div>
-              <div className="demo-seat seat-b"><span>{'\u{1F43C}'}</span><i className="card-back">◆</i><small>Alex</small></div>
-              <div className="demo-seat seat-c"><span>{'\u{1F438}'}</span><i className="card-back">◆</i><small>Sam</small></div>
-              <div className="demo-seat seat-d"><span>{'\u{1F42F}'}</span><i className="card-back">◆</i><small>Priya</small></div>
+              <div className="demo-seat seat-a"><span>{'\u{1F98A}'}</span><i className="card-back">◆</i><small>Jack</small></div>
+              <div className="demo-seat seat-b"><span>{'\u{1F43C}'}</span><i className="card-back">◆</i><small>Rovi</small></div>
+              <div className="demo-seat seat-c"><span>{'\u{1F438}'}</span><i className="card-back">◆</i><small>David</small></div>
+              <div className="demo-seat seat-d"><span>{'\u{1F42F}'}</span><i className="card-back">◆</i><small>Clive</small></div>
               <div className="table-felt"><span>Ready to reveal?</span><strong>5 / 6</strong></div>
             </div>
             <div className="demo-deck">
@@ -174,7 +174,7 @@ export default function Landing({ onNavigate, theme, onThemeChange }) {
 
       <footer className="landing-footer">
         <div className="footer-brand"><Logo /><p>Made for teams who value the conversation over the number.</p></div>
-        <nav className="footer-socials" aria-label="Jack Sarg links">
+        <nav className="footer-socials" aria-label="Jack's links">
           <a href="https://jacksarg.com" target="_blank" rel="noopener noreferrer me"><Globe2 size={16} /><span>Website</span></a>
           <a href="https://github.com/JackSarg" target="_blank" rel="noopener noreferrer me"><GithubIcon /><span>GitHub</span></a>
           <a href="https://www.linkedin.com/in/jacksarg/" target="_blank" rel="noopener noreferrer me"><LinkedinIcon /><span>LinkedIn</span></a>
