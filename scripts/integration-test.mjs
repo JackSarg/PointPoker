@@ -1,5 +1,9 @@
 import { AVATARS, parseAcceptanceCriteria } from '../src/lib.js'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import emojiPickerPackage from 'emoji-picker-react'
 
 const baseUrl = process.env.POINTPOKER_URL || 'http://localhost:5173'
 
@@ -74,6 +78,14 @@ assert(homeResponse.ok, 'The public app shell should load')
 const securityHeaderRules = await readFile(new URL('../public/_headers', import.meta.url), 'utf8')
 assert(securityHeaderRules.includes('X-Content-Type-Options: nosniff'), 'Static asset rules should send nosniff')
 assert(securityHeaderRules.includes("script-src 'self'"), 'Static asset rules should define a restrictive CSP')
+const EmojiPicker = emojiPickerPackage.default || emojiPickerPackage
+const pickerMarkup = renderToStaticMarkup(React.createElement(EmojiPicker, { emojiStyle: 'native', height: 360, width: '100%' }))
+const pickerStyleTagStart = pickerMarkup.indexOf('<style')
+const pickerStyleStart = pickerMarkup.indexOf('>', pickerStyleTagStart) + 1
+const pickerStyleEnd = pickerMarkup.indexOf('</style>', pickerStyleStart)
+assert(pickerStyleTagStart >= 0 && pickerStyleEnd > pickerStyleStart, 'The emoji picker should expose its inline stylesheet for CSP validation')
+const pickerStyleHash = createHash('sha256').update(pickerMarkup.slice(pickerStyleStart, pickerStyleEnd)).digest('base64')
+assert(securityHeaderRules.includes(`'sha256-${pickerStyleHash}'`), 'The CSP should permit the exact emoji-picker stylesheet hash')
 if (!['localhost', '127.0.0.1'].includes(new URL(baseUrl).hostname)) {
   assert(homeResponse.headers.get('x-content-type-options') === 'nosniff', 'The deployed app should send nosniff')
   assert(homeResponse.headers.get('content-security-policy')?.includes("script-src 'self'"), 'The deployed app should send its CSP')
