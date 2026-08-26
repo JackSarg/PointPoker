@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -20,4 +21,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Run integration checks
+        shell: bash
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/pointpoker-vite.log 2>&1 &
+          dev_pid=$!
+          trap 'kill "$dev_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5173/ > /dev/null; then
+              npm run test:integration
+              exit $?
+            fi
+            sleep 1
+          done
+          cat /tmp/pointpoker-vite.log
+          exit 1
       - run: npm audit --audit-level=high
