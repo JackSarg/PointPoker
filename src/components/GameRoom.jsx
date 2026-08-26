@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Copy, Crown, Diamond,
   ClipboardList, DoorOpen, Edit3, Eye, EyeOff, History, LoaderCircle, Menu, MessageCircleQuestion,
-  MoreHorizontal, Play, RotateCcw, Share2, SmilePlus, Sparkles, TimerOff, Users, Wifi, WifiOff, X,
+  MoreHorizontal, Play, RotateCcw, Share2, SmilePlus, Sparkles, TimerOff, UserMinus, Users, Wifi, WifiOff, X,
   Zap,
 } from 'lucide-react'
 import EmojiPickerDialog from './EmojiPickerDialog'
@@ -12,6 +12,7 @@ import PokerTable from './PokerTable'
 import StoryEditor from './StoryEditor'
 import ThemeToggle from './ThemeToggle'
 import TimerSelect from './TimerSelect'
+import { clearSession } from '../lib'
 
 function formatClock(milliseconds) {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000))
@@ -31,8 +32,8 @@ function getRecentReactions() {
   return DEFAULT_REACTIONS
 }
 
-function Participants({ state, me, onTransferHost }) {
-  const [pendingHostId, setPendingHostId] = useState(null)
+function Participants({ state, me, onTransferHost, onKickPlayer }) {
+  const [pendingPlayerId, setPendingPlayerId] = useState(null)
 
   return (
     <aside className="participants-panel">
@@ -40,29 +41,33 @@ function Participants({ state, me, onTransferHost }) {
       <div className="participant-list">
         {state.participants.map((person, index) => {
           const vote = state.round.votes[person.id]
-          const canTransferHost = Boolean(me.isHost && person.id !== me.id && person.online)
-          const confirmingTransfer = pendingHostId === person.id
+          const canManagePlayer = Boolean(me.isHost && person.id !== me.id)
+          const canTransferHost = Boolean(canManagePlayer && person.online)
+          const showingPlayerActions = pendingPlayerId === person.id
           return (
-            <div className={`participant-row ${!person.online ? 'offline' : ''} ${canTransferHost ? 'can-transfer-host' : ''} ${confirmingTransfer ? 'pending-transfer' : ''}`} key={person.id}>
+            <div className={`participant-row ${!person.online ? 'offline' : ''} ${canManagePlayer ? 'can-manage-player' : ''} ${showingPlayerActions ? 'pending-player-action' : ''}`} key={person.id}>
               <button
                 type="button"
                 className="participant-row-main"
-                disabled={!canTransferHost}
-                onClick={() => setPendingHostId(person.id)}
-                aria-label={canTransferHost ? `Make ${person.nickname} the host` : undefined}
-                title={canTransferHost ? `Make ${person.nickname} the host` : undefined}
+                disabled={!canManagePlayer}
+                onClick={() => setPendingPlayerId(person.id)}
+                aria-label={canManagePlayer ? `Manage ${person.nickname}` : undefined}
+                title={canManagePlayer ? `Manage ${person.nickname}` : undefined}
               >
                 <span className={`participant-avatar avatar-tone-${index % 6}`}>{person.avatar}<i className={person.online ? 'online' : ''} /></span>
-                <span className="participant-name"><strong>{person.nickname}</strong><small>{person.id === me.id ? 'You' : person.isHost ? 'Facilitator' : canTransferHost ? 'Click to make host' : person.online ? 'At the table' : 'Away'}</small></span>
+                <span className="participant-name"><strong>{person.nickname}</strong><small>{person.id === me.id ? 'You' : person.isHost ? 'Facilitator' : canManagePlayer ? person.online ? 'Click to manage' : 'Away - click to manage' : person.online ? 'At the table' : 'Away'}</small></span>
                 {person.isHost && <Crown className="host-crown" size={14} fill="currentColor" />}
                 {state.round.status === 'voting' && <span className={`vote-status ${vote ? 'done' : ''}`}>{vote ? <Check size={13} /> : <MoreHorizontal size={15} />}</span>}
                 {state.round.status === 'revealed' && vote && <span className="mini-vote">{vote.value}</span>}
               </button>
-              {confirmingTransfer && (
-                <div className="host-transfer-confirm">
-                  <span><Crown size={12} /> Make <strong>{person.nickname}</strong> host?</span>
-                  <button type="button" className="host-transfer-confirm-button" onClick={() => { setPendingHostId(null); onTransferHost(person) }}><Check size={12} /> Transfer</button>
-                  <button type="button" className="host-transfer-cancel-button" onClick={() => setPendingHostId(null)} aria-label="Cancel host transfer"><X size={13} /></button>
+              {showingPlayerActions && (
+                <div className="participant-action-confirm">
+                  <span>Manage <strong>{person.nickname}</strong></span>
+                  <div className={`participant-action-buttons ${canTransferHost ? '' : 'single'}`}>
+                    {canTransferHost && <button type="button" className="host-transfer-confirm-button" onClick={() => { setPendingPlayerId(null); onTransferHost(person) }}><Crown size={11} /> Make host</button>}
+                    <button type="button" className="player-kick-button" onClick={() => { setPendingPlayerId(null); onKickPlayer(person) }}><UserMinus size={11} /> Kick</button>
+                  </div>
+                  <button type="button" className="host-transfer-cancel-button" onClick={() => setPendingPlayerId(null)} aria-label="Cancel player actions"><X size={13} /></button>
                 </div>
               )}
             </div>
@@ -97,8 +102,10 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
   const [reactionPicker, setReactionPicker] = useState(null)
   const [quickReaction, setQuickReaction] = useState(null)
   const [mobilePanel, setMobilePanel] = useState(false)
+  const [analyticsRoundKey, setAnalyticsRoundKey] = useState(null)
   const socketRef = useRef(null)
   const toastTimer = useRef(null)
+  const removedRef = useRef(false)
 
   const toast = useCallback((message) => {
     setToastMessage(message)
@@ -134,6 +141,13 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
         }
         if (message.type === 'error') toast(message.message)
         if (message.type === 'host_transferred') toast(`${message.nickname} is now the host`)
+        if (message.type === 'player_removed') toast(`${message.nickname} was removed from the room`)
+        if (message.type === 'removed') {
+          removedRef.current = true
+          clearSession(code)
+          setState(null)
+          setConnectionError(message.message || 'The host removed you from this room.')
+        }
         if (message.type === 'reaction') {
           setReactions((current) => [...current.slice(-5), message])
           setTimeout(() => setReactions((current) => current.filter((item) => item.id !== message.id)), 1800)
@@ -142,6 +156,13 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
       socket.onclose = (event) => {
         if (!active) return
         setConnected(false)
+        if (removedRef.current || (event.code === 1008 && event.reason === 'Removed by host')) {
+          removedRef.current = true
+          clearSession(code)
+          setState(null)
+          setConnectionError('The host removed you from this room.')
+          return
+        }
         if (event.code === 1008 || event.code === 1003) {
           setConnectionError('Your seat could not be restored. Return home and join again.')
         } else {
@@ -162,6 +183,13 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (state?.round.status !== 'revealed') return undefined
+    const revealedRoundKey = `${state.round.number}:${state.round.startedAt || 'lobby'}`
+    const timer = setTimeout(() => setAnalyticsRoundKey(revealedRoundKey), 3_000)
+    return () => clearTimeout(timer)
+  }, [state?.round.number, state?.round.startedAt, state?.round.status])
 
   const send = useCallback((type, payload = {}) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ type, ...payload }))
@@ -200,6 +228,8 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
   const votedCount = state ? Object.keys(state.round.votes).length : 0
   const readyCount = state?.participants.filter((person) => person.readiness === 'ready').length || 0
   const roundKey = state ? `${state.round.number}:${state.round.startedAt || 'lobby'}` : ''
+  const revealedRoundKey = state?.round.status === 'revealed' ? roundKey : null
+  const showAnalytics = Boolean(revealedRoundKey && analyticsRoundKey === revealedRoundKey)
   const remaining = state?.round.startedAt && state.round.durationMinutes > 0
     ? Math.min(state.round.durationMinutes * 60_000, state.round.startedAt + state.round.durationMinutes * 60_000 - now)
     : null
@@ -284,12 +314,12 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
 
       <div className="room-layout">
         <div className={`mobile-panel-scrim ${mobilePanel ? 'open' : ''}`} onClick={() => setMobilePanel(false)} />
-        <div className={`participants-wrap ${mobilePanel ? 'open' : ''}`}><button className="close-panel" onClick={() => setMobilePanel(false)}><X size={18} /></button><Participants state={state} me={me} onTransferHost={(person) => send('transfer_host', { targetPlayerId: person.id })} /></div>
+        <div className={`participants-wrap ${mobilePanel ? 'open' : ''}`}><button className="close-panel" onClick={() => setMobilePanel(false)}><X size={18} /></button><Participants state={state} me={me} onTransferHost={(person) => send('transfer_host', { targetPlayerId: person.id })} onKickPlayer={(person) => send('kick_player', { targetPlayerId: person.id })} /></div>
 
         <main className="game-main">
-          <div className={`table-flip-scene ${state.round.status === 'revealed' ? 'is-flipped' : ''}`}>
+          <div className={`table-flip-scene ${showAnalytics ? 'is-flipped' : ''}`}>
             <div className="table-flip-card">
-              <section className="table-section table-face table-front" aria-hidden={state.round.status === 'revealed'}>
+              <section className="table-section table-face table-front" aria-hidden={showAnalytics}>
                 <div className={`round-statusbar ${state.round.status === 'lobby' ? 'lobby-statusbar' : ''}`}>
                   <div>
                     {state.round.status === 'lobby' && <><span className="status-icon lobby"><CircleHelp size={16} /></span><span><strong>{detailsEnabled ? 'Clarity check' : 'Ready check'}</strong><small>{detailsEnabled ? 'Read the story, then signal your readiness.' : 'Start whenever everyone is at the table.'}</small></span></>}
@@ -324,14 +354,14 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
                 </div>
               </section>
 
-              <section className="table-section table-face table-back" aria-hidden={state.round.status !== 'revealed'}>
+              <section className="table-section table-face table-back" aria-hidden={!showAnalytics}>
                 <div className="round-statusbar results-statusbar">
                   <div><span className="status-icon revealed"><Eye size={16} /></span><span><strong>Cards revealed</strong><small>Explore the spread before settling on a number.</small></span></div>
                   <div className="round-status-actions">
                     {isHost && state.round.status === 'revealed' && <><button className="table-round-button secondary" onClick={revote}><RotateCcw size={13} /> Revote</button><button className="table-round-button primary" onClick={nextStory} disabled={!state.round.finalEstimate} title={!state.round.finalEstimate ? 'Choose the winning estimate first' : 'Start the next story'}>{state.round.finalEstimate ? 'Next story' : 'Pick winner first'} <ArrowRight size={13} /></button></>}
                   </div>
                 </div>
-                {state.round.status === 'revealed' && <Analytics state={state} isHost={isHost} send={send} toast={toast} />}
+                {showAnalytics && <Analytics state={state} isHost={isHost} send={send} toast={toast} />}
               </section>
             </div>
           </div>

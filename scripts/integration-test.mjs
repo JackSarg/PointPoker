@@ -43,11 +43,11 @@ function waitForState(socket, predicate, timeoutMs = 5000) {
   })
 }
 
-function waitForMessage(socket, predicate, timeoutMs = 5000) {
+function waitForMessage(socket, predicate, timeoutMs = 5000, description = 'WebSocket message') {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       socket.removeEventListener('message', onMessage)
-      reject(new Error('Timed out waiting for WebSocket message'))
+      reject(new Error(`Timed out waiting for ${description}`))
     }, timeoutMs)
 
     function onMessage(event) {
@@ -127,7 +127,7 @@ await new Promise((resolve, reject) => {
 guestSocket.send(JSON.stringify({ type: 'authenticate', playerId: guest.playerId, token: guest.token }))
 
 assert(AVATARS.length === 30, 'The player-character roster should include 30 choices')
-const targetedReactionPromise = waitForMessage(guestSocket, (message) => message.type === 'reaction' && message.value === '🚀')
+const targetedReactionPromise = waitForMessage(guestSocket, (message) => message.type === 'reaction' && message.value === '🚀', 5000, 'targeted reaction')
 socket.send(JSON.stringify({ type: 'reaction', value: '🚀', targetPlayerId: guest.playerId }))
 const targetedReaction = await targetedReactionPromise
 assert(targetedReaction.playerId === quickRoom.playerId && targetedReaction.targetPlayerId === guest.playerId, 'Targeted emoji reactions should identify both sender and recipient')
@@ -135,7 +135,7 @@ assert(targetedReaction.playerId === quickRoom.playerId && targetedReaction.targ
 const transferredHost = await sendAndWait(socket, { type: 'transfer_host', targetPlayerId: guest.playerId }, (state) => state.hostId === guest.playerId)
 assert(transferredHost.participants.find((person) => person.id === guest.playerId)?.isHost === true, 'Host transfer should crown the selected player')
 assert(transferredHost.participants.find((person) => person.id === quickRoom.playerId)?.isHost === false, 'Host transfer should remove facilitator rights from the previous host')
-const formerHostDenied = waitForMessage(socket, (message) => message.type === 'error')
+const formerHostDenied = waitForMessage(socket, (message) => message.type === 'error', 5000, 'former-host rejection')
 socket.send(JSON.stringify({ type: 'start_round', durationMinutes: 0 }))
 assert((await formerHostDenied).message === 'That action is not available right now.', 'The former host should immediately lose facilitator controls')
 const restoredHost = await sendAndWait(guestSocket, { type: 'transfer_host', targetPlayerId: quickRoom.playerId }, (state) => state.hostId === quickRoom.playerId)
@@ -189,6 +189,41 @@ const detailedRoom = await request('/api/rooms', {
 assert(detailedRoom.state.detailsEnabled === true, 'Detailed rooms should honour the creation switch')
 assert(detailedRoom.state.story.key === 'WEB-901' && detailedRoom.state.story.criteria.length === 2, 'Jira details supplied during creation should be ready in round one')
 
+const removablePlayerAppeared = waitForState(socket, (state) => state.participants.some((person) => person.nickname === 'Finished early'))
+const removablePlayer = await request(`/api/rooms/${quickRoom.code}/join`, {
+  method: 'POST',
+  body: JSON.stringify({ nickname: 'Finished early', avatar: '🦉' }),
+})
+await removablePlayerAppeared
+const guestKickDenied = waitForMessage(guestSocket, (message) => message.type === 'error', 5000, 'guest kick rejection')
+guestSocket.send(JSON.stringify({ type: 'kick_player', targetPlayerId: removablePlayer.playerId }))
+assert((await guestKickDenied).message === 'That action is not available right now.', 'Only the current host should be able to kick players')
+const afterKick = await sendAndWait(socket, { type: 'kick_player', targetPlayerId: removablePlayer.playerId }, (state) => !state.participants.some((person) => person.id === removablePlayer.playerId))
+assert(afterKick.hostId === quickRoom.playerId, 'Kicking an away player should preserve the current host')
+assert(!afterKick.round.votes[removablePlayer.playerId], 'Kicking a player should remove any round vote attached to that seat')
+
+const liveRemovablePlayer = await request(`/api/rooms/${quickRoom.code}/join`, {
+  method: 'POST',
+  body: JSON.stringify({ nickname: 'Still connected', avatar: '🐢' }),
+})
+const liveRemovableSocket = new WebSocket(
+  `${wsProtocol}//${url.host}/api/rooms/${quickRoom.code}/ws`,
+  'pointpoker-v1',
+)
+await new Promise((resolve, reject) => {
+  liveRemovableSocket.addEventListener('open', resolve, { once: true })
+  liveRemovableSocket.addEventListener('error', () => reject(new Error('Removable WebSocket failed to open')), { once: true })
+})
+const livePlayerOnline = waitForState(socket, (state) => state.participants.find((person) => person.id === liveRemovablePlayer.playerId)?.online === true)
+liveRemovableSocket.send(JSON.stringify({ type: 'authenticate', playerId: liveRemovablePlayer.playerId, token: liveRemovablePlayer.token }))
+await livePlayerOnline
+const removalNotice = waitForMessage(liveRemovableSocket, (message) => message.type === 'removed', 5000, 'removed-player notice')
+const kickedSocketClosed = new Promise((resolve) => liveRemovableSocket.addEventListener('close', resolve, { once: true }))
+await sendAndWait(socket, { type: 'kick_player', targetPlayerId: liveRemovablePlayer.playerId }, (state) => !state.participants.some((person) => person.id === liveRemovablePlayer.playerId))
+assert((await removalNotice).message.includes('removed'), 'A connected kicked player should receive an explicit removal notice')
+const kickedCloseEvent = await kickedSocketClosed
+assert(kickedCloseEvent.code === 1008, 'A connected kicked player should be closed with a policy code')
+
 socket.close(1000, 'Test complete')
 guestSocket.close(1000, 'Test complete')
-console.log('Integration checks passed: security headers, input bounds, route and origin validation, private history, room modes, avatars, host transfer, emoji targeting, AC parsing, timers, chip scoring, winner changes, and revote.')
+console.log('Integration checks passed: security headers, input bounds, route and origin validation, private history, room modes, avatars, host transfer, host kick, emoji targeting, AC parsing, timers, chip scoring, winner changes, and revote.')

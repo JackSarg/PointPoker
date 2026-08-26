@@ -1,13 +1,21 @@
+import { useState } from 'react'
 import { BarChart3, CheckCircle2, Clipboard, Gauge, Trophy, TrendingUp } from 'lucide-react'
 import { CARDS, getAnalytics } from '../lib'
 
 export default function Analytics({ state, isHost, send, toast }) {
+  const [hoveredCard, setHoveredCard] = useState(null)
+  const [selectedCard, setSelectedCard] = useState(null)
   const analytics = getAnalytics(state.round.votes)
   const entries = Object.entries(analytics.counts).sort((a, b) => CARDS.indexOf(a[0]) - CARDS.indexOf(b[0]))
   const maxCount = Math.max(...entries.map(([, count]) => count), 1)
   const splitSuggested = analytics.spread !== null && analytics.spread >= 8
   const roundWinners = new Set(state.round.awardedPlayerIds || [])
   const leaderboard = [...state.participants].sort((a, b) => (b.chips || 0) - (a.chips || 0) || a.joinedAt - b.joinedAt)
+  const requestedCard = hoveredCard || selectedCard
+  const activeCard = requestedCard && analytics.counts[requestedCard] ? requestedCard : null
+  const activeVoters = activeCard
+    ? state.participants.filter((person) => state.round.votes[person.id]?.value === activeCard)
+    : []
 
   const copySummary = async () => {
     const finalScore = state.round.finalEstimate || analytics.mode
@@ -32,13 +40,32 @@ export default function Analytics({ state, isHost, send, toast }) {
       <div className="results-detail-grid">
         <div className="distribution-card">
           <h3>Vote distribution</h3>
+          <div className={`distribution-voter-panel ${activeCard ? 'has-voters' : ''}`} aria-live="polite">
+            {activeCard ? (
+              <><strong>{activeCard}</strong><span>{activeVoters.map((person) => <span key={person.id}><i>{person.avatar}</i>{person.nickname}</span>)}</span></>
+            ) : <span>Hover, focus or tap a bar to see who chose it.</span>}
+          </div>
           <div className="distribution-bars">
-            {entries.map(([card, count]) => (
-              <div className="distribution-item" key={card}>
-                <div className="bar-track"><span style={{ height: `${Math.max((count / maxCount) * 100, 12)}%` }}><b>{count}</b></span></div>
-                <strong>{card}</strong>
-              </div>
-            ))}
+            {entries.map(([card, count]) => {
+              const voters = state.participants.filter((person) => state.round.votes[person.id]?.value === card)
+              return (
+                <button
+                  type="button"
+                  className={`distribution-item ${activeCard === card ? 'is-active' : ''} ${state.round.finalEstimate === card ? 'is-winner' : ''}`}
+                  key={card}
+                  onMouseEnter={() => setHoveredCard(card)}
+                  onMouseLeave={() => setHoveredCard(null)}
+                  onFocus={() => setHoveredCard(card)}
+                  onBlur={() => setHoveredCard(null)}
+                  onClick={() => setSelectedCard((current) => current === card ? null : card)}
+                  aria-label={`${card}: ${count} ${count === 1 ? 'vote' : 'votes'} from ${voters.map((person) => person.nickname).join(', ')}`}
+                  aria-pressed={selectedCard === card}
+                >
+                  <span className="bar-track"><span style={{ height: `${Math.max((count / maxCount) * 100, 12)}%` }}><b>{count}</b></span></span>
+                  <strong>{card}</strong>
+                </button>
+              )
+            })}
           </div>
         </div>
         <div className="leaderboard-card">
@@ -63,7 +90,7 @@ export default function Analytics({ state, isHost, send, toast }) {
         <div><span className="mini-label">Winning vote</span><h3>{isHost ? 'Which estimate takes the round?' : state.round.finalEstimate ? 'The host has picked a winner' : 'Waiting for the host'}</h3></div>
         {isHost ? (
           <div className="estimate-options">
-            {CARDS.filter((card) => card !== '☕').map((card) => <button className={state.round.finalEstimate === card ? 'selected' : ''} key={card} onClick={() => { send('final_estimate', { value: card }); toast(`Winning estimate: ${card}`) }}>{card}</button>)}
+            {CARDS.filter((card) => card !== '☕').map((card) => <button className={state.round.finalEstimate === card ? 'selected' : ''} key={card} aria-pressed={state.round.finalEstimate === card} onClick={() => { send('final_estimate', { value: card }); toast(`Winning estimate: ${card}`) }}>{card}</button>)}
           </div>
         ) : <span className={`winning-estimate-display ${state.round.finalEstimate ? 'selected' : ''}`}>{state.round.finalEstimate || '—'}</span>}
       </div>

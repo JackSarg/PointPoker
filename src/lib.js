@@ -55,6 +55,15 @@ export function saveSession(code, session) {
   localStorage.setItem(sessionKey(code), JSON.stringify(session))
 }
 
+export function clearSession(code) {
+  try {
+    localStorage.removeItem(sessionKey(code))
+    localStorage.removeItem(`pointdeck:${code.toUpperCase()}`)
+  } catch {
+    // A removed seat still cannot authenticate if browser storage is unavailable.
+  }
+}
+
 export async function api(path, options = {}) {
   const headers = new Headers(options.headers || {})
   headers.set('accept', 'application/json')

@@ -12,9 +12,9 @@ PointPoker is a real-time planning-poker app for agile refinement sessions. It c
 - Ready/question checks and no-limit, 30-second, one-, three-, five- or eight-minute rounds
 - Quick-vote mode or optional Jira-style story context
 - Paste-friendly acceptance-criteria cleanup
-- Average, mode, spread, confidence and vote distribution
+- Average, mode, spread, confidence and an interactive vote distribution showing who chose each value
 - Host-selected winning estimates, poker-chip rewards and a session leaderboard
-- Host transfer, room history, share links and Jira-friendly clipboard summaries
+- Host transfer, host-controlled player removal, room history, share links and Jira-friendly clipboard summaries
 - Full emoji picker, recent reactions and targeted table reactions
 - Dark/light themes and responsive desktop/mobile layouts
 - Public privacy notice and terms of use

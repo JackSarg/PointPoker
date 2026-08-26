@@ -443,6 +443,28 @@ export class PokerRoom extends DurableObject {
       this.broadcast({ type: 'host_transferred', playerId: nextHost.id, nickname: nextHost.nickname })
       this.broadcastState()
       return
+    } else if (message.type === 'kick_player' && isHost) {
+      const targetPlayerId = cleanText(message.targetPlayerId, 64)
+      const removedPlayer = this.state.participants.find((item) => item.id === targetPlayerId)
+      if (!removedPlayer || removedPlayer.id === person.id || removedPlayer.id === this.state.hostId) {
+        socket.send(JSON.stringify({ type: 'error', message: 'Choose another player to remove.' }))
+        return
+      }
+
+      this.state.participants = this.state.participants.filter((item) => item.id !== removedPlayer.id)
+      delete round.votes[removedPlayer.id]
+      round.awardedPlayerIds = (round.awardedPlayerIds || []).filter((playerId) => playerId !== removedPlayer.id)
+      await this.save()
+
+      for (const playerSocket of this.ctx.getWebSockets()) {
+        if (playerSocket.deserializeAttachment()?.playerId !== removedPlayer.id) continue
+        try { playerSocket.send(JSON.stringify({ type: 'removed', message: 'The host removed you from this room.' })) } catch { /* already closed */ }
+        try { playerSocket.close(1008, 'Removed by host') } catch { /* already closed */ }
+      }
+
+      this.broadcast({ type: 'player_removed', playerId: removedPlayer.id, nickname: removedPlayer.nickname })
+      this.broadcastState()
+      return
     } else if (message.type === 'start_round' && isHost) {
       this.clearRoundAwards(round)
       round.status = 'voting'
