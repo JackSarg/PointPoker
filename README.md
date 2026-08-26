@@ -24,7 +24,7 @@ PointPoker is a real-time planning-poker app for agile refinement sessions. It c
 
 The browser is a React 19 single-page application built with Vite. A Cloudflare Worker validates and routes API traffic. Each room maps to one SQLite-backed Durable Object, which serialises room changes, persists state and accepts hibernatable WebSockets.
 
-Room-scoped player tokens are stored in browser `localStorage`. They are sent during the WebSocket handshake as a subprotocol header, not in URLs, and are removed from every public room response. Unrevealed votes are only sent to the participant who cast them. Completed history exposes the story and final estimate, not individual historical votes.
+Room-scoped player tokens are stored in browser `localStorage`. They are sent in an authentication message immediately after the encrypted WebSocket opens, never in the URL or handshake headers, and are removed from every public room response. Unrevealed votes are only sent to the participant who cast them. Completed history exposes the story and final estimate, not individual historical votes.
 
 The app has no advertising, analytics or third-party font requests.
 
@@ -66,12 +66,24 @@ The integration suite expects the development server at `http://localhost:5173`.
 
 SQLite-backed Durable Objects and Workers Static Assets are supported on the Workers Free plan. Current free allowances and limits can change, so review the official [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) before launch.
 
-1. Create a Cloudflare account and install dependencies with `npm ci`.
-2. Run `npm run check` and `npm run test:integration`.
-3. Authenticate Wrangler with `npx wrangler login`.
-4. Confirm the Worker name and rate-limit namespace IDs in `wrangler.jsonc` do not collide with another project in the same Cloudflare account.
-5. Run `npm run deploy`.
-6. Test the generated `*.workers.dev` URL, then attach a custom domain if wanted.
+### Git-connected deployment
+
+1. In Cloudflare, open **Workers & Pages**, select **Create application**, then choose **Import a repository**.
+2. Connect GitHub and select `JackSarg/PointPoker`.
+3. Keep the production branch as `main` and the root directory blank (the repository root).
+4. Use `npm run build` as the build command and `npx wrangler deploy` as the deploy command.
+5. Name the Worker `pointpoker` so it matches `wrangler.jsonc`, then select **Save and Deploy**.
+6. Test the generated `*.workers.dev` address.
+
+Cloudflare installs dependencies automatically for Workers Builds. The checked-in `.node-version` selects Node.js 22.
+
+### Add `poker.jacksarg.com`
+
+The `jacksarg.com` DNS zone must be active in the same Cloudflare account. Remove any conflicting DNS record already using the `poker` hostname. Open the `pointpoker` Worker, go to **Settings > Domains & Routes > Add > Custom Domain**, enter `poker.jacksarg.com`, and select **Add Custom Domain**. Cloudflare creates the DNS record and TLS certificate.
+
+### Manual deployment fallback
+
+Install dependencies with `npm ci`, run `npm run check` and `npm run test:integration`, authenticate with `npx wrangler login`, then run `npm run deploy`.
 
 Wrangler creates the `PokerRoom` SQLite Durable Object namespace from the `v1` migration and deploys the Worker and static assets together. Security headers are defined in `public/_headers`.
 
