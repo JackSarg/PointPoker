@@ -1,0 +1,35 @@
+{
+  "name": "pointpoker",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A fast, multiplayer planning-poker app for agile refinement sessions.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "check": "eslint . && vite build",
+    "test:integration": "node scripts/integration-test.mjs"
+  },
+  "dependencies": {
+    "emoji-picker-react": "4.19.1",
+    "lucide-react": "1.34.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.53.1",
+    "@eslint/js": "10.0.1",
+    "@vitejs/plugin-react": "6.1.0",
+    "eslint": "10.9.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.4",
+    "globals": "17.11.0",
+    "vite": "8.2.2",
+    "wrangler": "4.125.0"
+  }
+}
