@@ -41,7 +41,7 @@ function PrivacyPolicy() {
 
       <section>
         <h2>Retention</h2>
-        <p>Room data is automatically deleted after seven days without room activity. If participants are still connected when expiry is due, deletion is postponed. Browser-held room access details, theme choice and recent emoji choices remain until you clear this site's browser data. Rate-limit counters are short-lived platform security data.</p>
+        <p>Room data is automatically deleted after seven days without room activity. If participants are still connected when expiry is due, deletion is postponed. A host can delete completed round history or permanently delete the room and all room data stored by PointPoker at any time. Browser-held room access details, theme choice and recent emoji choices remain until you clear this site's browser data. Rate-limit counters are short-lived platform security data.</p>
       </section>
 
       <section>

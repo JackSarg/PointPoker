@@ -65,7 +65,7 @@ export default function PokerTable({ state, me, reactions, quickReaction, onVote
                 <small>again</small>
               </button>
             )}
-            {person.readiness && round.status === 'lobby' && <span className={`readiness-dot ${person.readiness}`}>{person.readiness === 'ready' ? 'Ready' : 'Question'}</span>}
+            {person.readiness && round.status === 'lobby' && <span className={`readiness-dot ${person.readiness}`}>{person.readiness === 'ready' ? 'Ready' : person.readiness === 'brb' ? 'BRB' : 'Question'}</span>}
             {person.id === me.id && round.status === 'voting' && (!vote || changingVote) && (
               <div className={`board-picker picker-${pickerVertical} picker-${pickerAlign}`}>
                 <div className="board-picker-heading">

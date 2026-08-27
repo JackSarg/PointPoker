@@ -418,7 +418,7 @@ export class PokerRoom extends DurableObject {
         value: message.value,
         confidence: ['low', 'medium', 'high'].includes(message.confidence) ? message.confidence : 'medium',
       }
-    } else if (message.type === 'readiness' && ['ready', 'question'].includes(message.value)) {
+    } else if (message.type === 'readiness' && ['ready', 'question', 'brb'].includes(message.value)) {
       person.readiness = message.value
     } else if (message.type === 'reaction') {
       const emoji = cleanEmoji(message.value)
@@ -465,6 +465,39 @@ export class PokerRoom extends DurableObject {
       this.broadcast({ type: 'player_removed', playerId: removedPlayer.id, nickname: removedPlayer.nickname })
       this.broadcastState()
       return
+    } else if (message.type === 'delete_history_entry' && isHost) {
+      const completedAt = Number(message.completedAt)
+      const historyEntry = Number.isSafeInteger(completedAt)
+        ? this.state.history.find((item) => item.completedAt === completedAt)
+        : null
+      if (!historyEntry) {
+        socket.send(JSON.stringify({ type: 'error', message: 'That completed round could not be found.' }))
+        return
+      }
+
+      for (const playerId of historyEntry.awardedPlayerIds || []) {
+        const winner = this.state.participants.find((item) => item.id === playerId)
+        if (winner) winner.chips = Math.max(0, (winner.chips || 0) - 1)
+      }
+      this.state.history = this.state.history.filter((item) => item.completedAt !== completedAt)
+    } else if (message.type === 'clear_history' && isHost) {
+      const currentRoundWinners = new Set(round.awardedPlayerIds || [])
+      this.state.history = []
+      this.state.participants.forEach((item) => { item.chips = currentRoundWinners.has(item.id) ? 1 : 0 })
+    } else if (message.type === 'delete_room' && isHost) {
+      const roomSockets = this.ctx.getWebSockets()
+      await this.ctx.storage.deleteAll()
+      try { await this.ctx.storage.deleteAlarm() } catch { /* an absent alarm is already deleted */ }
+      this.state = null
+
+      const payload = JSON.stringify({ type: 'room_deleted', message: 'The host permanently deleted this room and its stored data.' })
+      for (const roomSocket of roomSockets) {
+        try {
+          if (roomSocket.deserializeAttachment()?.playerId) roomSocket.send(payload)
+        } catch { /* already closed */ }
+        try { roomSocket.close(1008, 'Room deleted') } catch { /* already closed */ }
+      }
+      return
     } else if (message.type === 'start_round' && isHost) {
       this.clearRoundAwards(round)
       round.status = 'voting'
@@ -496,6 +529,7 @@ export class PokerRoom extends DurableObject {
           story: { ...this.state.story },
           finalEstimate: round.finalEstimate,
           completedAt: Date.now(),
+          awardedPlayerIds: [...(round.awardedPlayerIds || [])],
         })
         this.state.history = this.state.history.slice(0, 30)
       }

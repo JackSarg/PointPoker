@@ -138,6 +138,9 @@ await new Promise((resolve, reject) => {
 })
 guestSocket.send(JSON.stringify({ type: 'authenticate', playerId: guest.playerId, token: guest.token }))
 
+const guestBrb = await sendAndWait(guestSocket, { type: 'readiness', value: 'brb' }, (state) => state.participants.find((person) => person.id === guest.playerId)?.readiness === 'brb')
+assert(guestBrb.participants.find((person) => person.id === guest.playerId)?.readiness === 'brb', 'Players should be able to signal that they will be right back')
+
 assert(AVATARS.length === 30, 'The player-character roster should include 30 choices')
 const targetedReactionPromise = waitForMessage(guestSocket, (message) => message.type === 'reaction' && message.value === '🚀', 5000, 'targeted reaction')
 socket.send(JSON.stringify({ type: 'reaction', value: '🚀', targetPlayerId: guest.playerId }))
@@ -173,6 +176,13 @@ const revoteState = await sendAndWait(socket, { type: 'revote', durationMinutes:
 assert(revoteState.round.number === 2 && revoteState.round.durationMinutes === 1, 'Revote should restart the same story with the selected timer')
 assert(revoteState.participants.find((person) => person.id === quickRoom.playerId)?.chips === 1 && revoteState.participants.find((person) => person.id === guest.playerId)?.chips === 0, 'Revote should only revoke chips from the unfinished round')
 
+const completedRound = revoteState.history[0]
+const guestHistoryDeleteDenied = waitForMessage(guestSocket, (message) => message.type === 'error', 5000, 'guest history-deletion rejection')
+guestSocket.send(JSON.stringify({ type: 'delete_history_entry', completedAt: completedRound.completedAt }))
+assert((await guestHistoryDeleteDenied).message === 'That action is not available right now.', 'Only the current host should be able to delete completed round history')
+const historyEntryDeleted = await sendAndWait(socket, { type: 'delete_history_entry', completedAt: completedRound.completedAt }, (state) => state.history.length === 0)
+assert(historyEntryDeleted.participants.find((person) => person.id === quickRoom.playerId)?.chips === 0, 'Deleting completed round history should remove its attributable chip awards')
+
 await sendAndWait(socket, { type: 'toggle_details', enabled: true }, (state) => state.detailsEnabled === true)
 
 const criteria = parseAcceptanceCriteria('AC1: Customer can sign in AC2: Fallback is shown TAC3: Login is audited')
@@ -182,6 +192,14 @@ const savedStory = await sendAndWait(socket, {
   story: { key: 'WEB-248', title: 'Passkey authentication', description: 'Test story', criteria },
 }, (state) => state.story.criteria.length === 3)
 assert(savedStory.story.criteria[1] === 'Fallback is shown', 'Cleaned criteria should persist in order')
+
+await sendAndWait(socket, { type: 'vote', value: '3', confidence: 'medium' }, (state) => state.round.votes[quickRoom.playerId]?.value === '3')
+await sendAndWait(socket, { type: 'reveal' }, (state) => state.round.status === 'revealed')
+await sendAndWait(socket, { type: 'final_estimate', value: '3' }, (state) => state.round.finalEstimate === '3')
+const historyRecreated = await sendAndWait(socket, { type: 'next_round', autoStart: false, durationMinutes: 1 }, (state) => state.round.number === 3 && state.history.length === 1)
+assert(!('awardedPlayerIds' in historyRecreated.history[0]), 'Historical chip-award identifiers should remain private')
+const historyCleared = await sendAndWait(socket, { type: 'clear_history' }, (state) => state.history.length === 0)
+assert(historyCleared.participants.every((person) => person.chips === 0), 'Clearing history should reset historical leaderboard scores')
 
 const detailedRoom = await request('/api/rooms', {
   method: 'POST',
@@ -236,6 +254,18 @@ assert((await removalNotice).message.includes('removed'), 'A connected kicked pl
 const kickedCloseEvent = await kickedSocketClosed
 assert(kickedCloseEvent.code === 1008, 'A connected kicked player should be closed with a policy code')
 
-socket.close(1000, 'Test complete')
-guestSocket.close(1000, 'Test complete')
-console.log('Integration checks passed: security headers, input bounds, route and origin validation, private history, room modes, avatars, host transfer, host kick, emoji targeting, AC parsing, timers, chip scoring, winner changes, and revote.')
+const guestRoomDeleteDenied = waitForMessage(guestSocket, (message) => message.type === 'error', 5000, 'guest room-deletion rejection')
+guestSocket.send(JSON.stringify({ type: 'delete_room' }))
+assert((await guestRoomDeleteDenied).message === 'That action is not available right now.', 'Only the current host should be able to delete the room')
+const hostDeletionNotice = waitForMessage(socket, (message) => message.type === 'room_deleted', 5000, 'host room-deletion notice')
+const guestDeletionNotice = waitForMessage(guestSocket, (message) => message.type === 'room_deleted', 5000, 'guest room-deletion notice')
+const hostDeletedClose = new Promise((resolve) => socket.addEventListener('close', resolve, { once: true }))
+const guestDeletedClose = new Promise((resolve) => guestSocket.addEventListener('close', resolve, { once: true }))
+socket.send(JSON.stringify({ type: 'delete_room' }))
+assert((await hostDeletionNotice).message.includes('permanently deleted'), 'The host should be told that stored room data was deleted')
+assert((await guestDeletionNotice).message.includes('permanently deleted'), 'Participants should be told when the host deletes the room')
+assert((await hostDeletedClose).code === 1008 && (await guestDeletedClose).code === 1008, 'Deleting a room should close every connected room session')
+await expectStatus(`/api/rooms/${quickRoom.code}/meta`, 404)
+await expectStatus(`/api/rooms/${quickRoom.code}/join`, 404, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nickname: 'Too late', avatar: '🐸' }) })
+
+console.log('Integration checks passed: security headers, input bounds, route and origin validation, private/deletable history, room deletion, room modes, avatars, host transfer, host kick, emoji targeting, AC parsing, timers, chip scoring, winner changes, and revote.')

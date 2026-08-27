@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Copy, Crown, Diamond,
+  AlertTriangle, ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Coffee, Copy, Crown, Database, Diamond,
   ClipboardList, DoorOpen, Edit3, Eye, EyeOff, History, LoaderCircle, Menu, MessageCircleQuestion,
-  MoreHorizontal, Play, RotateCcw, Share2, SmilePlus, Sparkles, TimerOff, UserMinus, Users, Wifi, WifiOff, X,
+  MoreHorizontal, Play, RotateCcw, Share2, SmilePlus, Sparkles, TimerOff, Trash2, UserMinus, Users, Wifi, WifiOff, X,
   Zap,
 } from 'lucide-react'
 import EmojiPickerDialog from './EmojiPickerDialog'
@@ -32,8 +32,9 @@ function getRecentReactions() {
   return DEFAULT_REACTIONS
 }
 
-function Participants({ state, me, onTransferHost, onKickPlayer }) {
+function Participants({ state, me, onTransferHost, onKickPlayer, onDeleteHistoryEntry, onClearHistory, onDeleteRoom }) {
   const [pendingPlayerId, setPendingPlayerId] = useState(null)
+  const [confirmingClearHistory, setConfirmingClearHistory] = useState(false)
 
   return (
     <aside className="participants-panel">
@@ -76,12 +77,50 @@ function Participants({ state, me, onTransferHost, onKickPlayer }) {
       </div>
       {state.history.length > 0 && (
         <div className="history-block">
-          <div className="panel-title"><span><History size={15} /> History</span><b>{state.history.length}</b></div>
-          {state.history.slice(0, 4).map((item) => <div className="history-row" key={`${item.roundNumber}-${item.completedAt}`}><span><b>{item.story.key || `Round ${item.roundNumber}`}</b><small>{item.story.title}</small></span><strong>{item.finalEstimate || '—'}</strong></div>)}
+          <div className="panel-title">
+            <span><History size={15} /> History</span>
+            <div className="history-heading-actions">
+              <b>{state.history.length}</b>
+              {me.isHost && <button type="button" className={confirmingClearHistory ? 'confirming' : ''} onClick={() => { if (confirmingClearHistory) { setConfirmingClearHistory(false); onClearHistory() } else setConfirmingClearHistory(true) }}>{confirmingClearHistory ? 'Confirm' : 'Clear all'}</button>}
+            </div>
+          </div>
+          <div className="history-list">
+            {state.history.map((item) => (
+              <div className="history-row" key={`${item.roundNumber}-${item.completedAt}`}>
+                <span><b>{item.story.key || `Round ${item.roundNumber}`}</b><small>{item.story.title}</small></span>
+                <strong>{item.finalEstimate || '—'}</strong>
+                {me.isHost && <button type="button" className="history-delete-button" onClick={() => onDeleteHistoryEntry(item)} aria-label={`Delete round ${item.roundNumber} from history`} title="Delete this completed round"><Trash2 size={12} /></button>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {me.isHost && (
+        <div className="room-data-controls">
+          <span><Database size={15} /><span><strong>Room data</strong><small>Host controls</small></span></span>
+          <button type="button" onClick={onDeleteRoom}><Trash2 size={13} /> Delete room</button>
         </div>
       )}
       <div className="privacy-note"><EyeOff size={14} /><span><strong>Votes stay private</strong><br />until the facilitator reveals.</span></div>
     </aside>
+  )
+}
+
+function DeleteRoomDialog({ room, deleting, onClose, onDelete }) {
+  return (
+    <div className="delete-room-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !deleting && onClose()}>
+      <form className="delete-room-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-room-title" onSubmit={(event) => { event.preventDefault(); if (!deleting) onDelete() }}>
+        <button type="button" className="delete-room-close" onClick={onClose} disabled={deleting} aria-label="Close room deletion confirmation"><X size={18} /></button>
+        <span className="delete-room-icon"><AlertTriangle size={24} /></span>
+        <span className="mini-label">Permanent deletion</span>
+        <h2 id="delete-room-title">Delete this room and all its data?</h2>
+        <p>This permanently removes <strong>{room.name}</strong>, its participants, story context, current votes, completed-round history and leaderboard from PointPoker. Everyone at the table will be disconnected. This cannot be undone.</p>
+        <div className="delete-room-actions">
+          <button type="button" className="button ghost dark" onClick={onClose} disabled={deleting} autoFocus>Keep room</button>
+          <button type="submit" className="delete-room-confirm" disabled={deleting}>{deleting ? <><LoaderCircle className="spin" size={16} /> Deleting...</> : <><Trash2 size={15} /> Delete room forever</>}</button>
+        </div>
+      </form>
+    </div>
   )
 }
 
@@ -103,9 +142,15 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
   const [quickReaction, setQuickReaction] = useState(null)
   const [mobilePanel, setMobilePanel] = useState(false)
   const [analyticsRoundKey, setAnalyticsRoundKey] = useState(null)
+  const [deleteRoomOpen, setDeleteRoomOpen] = useState(false)
+  const [deletingRoom, setDeletingRoom] = useState(false)
   const socketRef = useRef(null)
   const toastTimer = useRef(null)
   const removedRef = useRef(false)
+  const roomDeletedRef = useRef(false)
+  const onLeaveRef = useRef(onLeave)
+
+  useEffect(() => { onLeaveRef.current = onLeave }, [onLeave])
 
   const toast = useCallback((message) => {
     setToastMessage(message)
@@ -139,7 +184,10 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
           setConnected(true)
           setConnectionError('')
         }
-        if (message.type === 'error') toast(message.message)
+        if (message.type === 'error') {
+          setDeletingRoom(false)
+          toast(message.message)
+        }
         if (message.type === 'host_transferred') toast(`${message.nickname} is now the host`)
         if (message.type === 'player_removed') toast(`${message.nickname} was removed from the room`)
         if (message.type === 'removed') {
@@ -147,6 +195,11 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
           clearSession(code)
           setState(null)
           setConnectionError(message.message || 'The host removed you from this room.')
+        }
+        if (message.type === 'room_deleted') {
+          roomDeletedRef.current = true
+          clearSession(code)
+          onLeaveRef.current()
         }
         if (message.type === 'reaction') {
           setReactions((current) => [...current.slice(-5), message])
@@ -156,6 +209,18 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
       socket.onclose = (event) => {
         if (!active) return
         setConnected(false)
+        if (roomDeletedRef.current || (event.code === 1008 && event.reason === 'Room deleted')) {
+          roomDeletedRef.current = true
+          clearSession(code)
+          onLeaveRef.current()
+          return
+        }
+        if (event.code === 1001 && event.reason === 'Room expired') {
+          clearSession(code)
+          setState(null)
+          setConnectionError('This room has expired and its stored data has been deleted.')
+          return
+        }
         if (removedRef.current || (event.code === 1008 && event.reason === 'Removed by host')) {
           removedRef.current = true
           clearSession(code)
@@ -292,6 +357,22 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
     }
   }
 
+  const openDeleteRoom = () => {
+    setMobilePanel(false)
+    setDeletingRoom(false)
+    setDeleteRoomOpen(true)
+  }
+
+  const closeDeleteRoom = () => {
+    if (deletingRoom) return
+    setDeleteRoomOpen(false)
+  }
+
+  const deleteRoom = () => {
+    setDeletingRoom(true)
+    send('delete_room')
+  }
+
   if (!state || !me) {
     return (
       <div className="full-loader room-loader"><Logo /><LoaderCircle className="spin" /><p>{connectionError || 'Pulling up a chair…'}</p>{connectionError && <button className="button light" onClick={onLeave}>Back home</button>}</div>
@@ -314,7 +395,7 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
 
       <div className="room-layout">
         <div className={`mobile-panel-scrim ${mobilePanel ? 'open' : ''}`} onClick={() => setMobilePanel(false)} />
-        <div className={`participants-wrap ${mobilePanel ? 'open' : ''}`}><button className="close-panel" onClick={() => setMobilePanel(false)}><X size={18} /></button><Participants state={state} me={me} onTransferHost={(person) => send('transfer_host', { targetPlayerId: person.id })} onKickPlayer={(person) => send('kick_player', { targetPlayerId: person.id })} /></div>
+        <div className={`participants-wrap ${mobilePanel ? 'open' : ''}`}><button className="close-panel" onClick={() => setMobilePanel(false)}><X size={18} /></button><Participants state={state} me={me} onTransferHost={(person) => send('transfer_host', { targetPlayerId: person.id })} onKickPlayer={(person) => send('kick_player', { targetPlayerId: person.id })} onDeleteHistoryEntry={(item) => { send('delete_history_entry', { completedAt: item.completedAt }); toast(`Round ${item.roundNumber} removed from history`) }} onClearHistory={() => { send('clear_history'); toast('Completed round history cleared') }} onDeleteRoom={openDeleteRoom} /></div>
 
         <main className="game-main">
           <div className={`table-flip-scene ${showAnalytics ? 'is-flipped' : ''}`}>
@@ -332,6 +413,7 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
                         <div className="table-readiness-options">
                           <button className={me.readiness === 'question' ? 'selected question' : ''} onClick={() => send('readiness', { value: 'question' })}><MessageCircleQuestion size={14} /> I have a question</button>
                           <button className={me.readiness === 'ready' ? 'selected ready' : ''} onClick={() => send('readiness', { value: 'ready' })}><Check size={14} /> Ready</button>
+                          <button className={me.readiness === 'brb' ? 'selected brb' : ''} onClick={() => send('readiness', { value: 'brb' })}><Coffee size={14} /> BRB</button>
                         </div>
                         {isHost ? (
                           <>
@@ -390,6 +472,7 @@ export default function GameRoom({ code, session, onLeave, theme, onThemeChange 
 
       {editorOpen && <StoryEditor story={newStoryEditor ? { key: '', title: '', description: '', criteria: [] } : state.story} onClose={closeStoryEditor} onSave={saveStory} />}
       {reactionPicker && <EmojiPickerDialog open onClose={() => setReactionPicker(null)} onSelect={selectReaction} recent={recentReactions} targetNickname={reactionPicker.targetNickname} theme={theme} />}
+      {deleteRoomOpen && <DeleteRoomDialog room={{ name: state.name }} deleting={deletingRoom} onClose={closeDeleteRoom} onDelete={deleteRoom} />}
       {toastMessage && <div className="toast"><Check size={16} /> {toastMessage}</div>}
     </div>
   )
